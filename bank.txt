@@ -1,0 +1,551 @@
+import pandas as pd
+import numpy as np
+
+
+%matplotlib inline
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+
+from sklearn.model_selection import train_test_split
+import tensorflow as tf
+from sklearn import preprocessing
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Dropout
+import keras
+from keras import backend as K
+from keras.models import Sequential
+from keras.layers import Dense, Dropout
+from tensorflow.keras import optimizers
+from tensorflow.keras.optimizers import Adam
+
+
+import sklearn.metrics as metrics
+from sklearn.metrics import accuracy_score, confusion_matrix, precision_score, recall_score, f1_score, precision_recall_curve, auc
+
+
+pd.set_option("display.max_columns", None)
+
+
+pd.set_option("display.float_format", lambda x: "%.3f" % x)
+
+
+import warnings
+
+warnings.filterwarnings("ignore")
+
+
+
+dataset_file = 'Churn_Modelling.csv'
+data = pd.read_csv(dataset_file)
+
+data.duplicated().sum()
+
+
+dupe = data["CustomerId"].duplicated()
+dupe[dupe == True].count()
+
+
+for feature in data.columns:  # Loop through all columns in the dataframe
+    if (
+        data[feature].dtype == "object"
+    ):  # Only apply for columns with categorical strings
+        print(data[feature].value_counts())
+        print("-" * 30)
+
+
+data.describe().T
+
+
+
+# This function takes the numerical column as the input and returns the boxplots
+# and histograms for the variable
+def histogram_boxplot(feature, figsize=(15, 10), bins=None):
+    """Boxplot and histogram combined
+    feature: 1-d feature array
+    figsize: size of fig (default (9,8))
+    bins: number of bins (default None / auto)
+    """
+    f2, (ax_box2, ax_hist2) = plt.subplots(
+        nrows=2,  # Number of rows of the subplot grid= 2
+        sharex=True,  # x-axis will be shared among all subplots
+        gridspec_kw={"height_ratios": (0.25, 0.75)},
+        figsize=figsize,
+    )  # creating the 2 subplots
+    sns.boxplot(
+        feature, ax=ax_box2, showmeans=True, color="violet"
+    )  # boxplot will be created and a star will indicate the mean value of the column
+    sns.distplot(
+        feature, kde=F, ax=ax_hist2, bins=bins, color="orange"
+    ) if bins else sns.distplot(
+        feature, kde=False, ax=ax_hist2, color="tab:cyan"
+    )  # For histogram
+    ax_hist2.axvline(
+        np.mean(feature), color="purple", linestyle="--"
+    )  # Add mean to the histogram
+    ax_hist2.axvline(
+        np.median(feature), color="black", linestyle="-"
+    )  # Add median to the histogram
+
+
+histogram_boxplot(data.CreditScore)
+
+
+histogram_boxplot(data.Age)
+
+
+histogram_boxplot(data.Balance)
+
+
+histogram_boxplot(data.EstimatedSalary)
+
+
+# Function to create barplots that indicate percentage for each category.
+
+
+def perc_on_bar(z):
+    total = len(data[z])  # length of the column
+    plt.figure(figsize=(15, 5))
+    # plt.xticks(rotation=45)
+    ax = sns.countplot(data[z], palette="Paired")
+    for p in ax.patches:
+        percentage = "{:.1f}%".format(
+            100 * p.get_height() / total
+        )  # percentage of each class of the category
+        x = p.get_x() + p.get_width() / 2 - 0.05  # width of the plot
+        y = p.get_y() + p.get_height()  # hieght of the plot
+
+        ax.annotate(percentage, (x, y), size=12)  # annotate the percantage
+    plt.show()  # show the plot
+
+
+
+perc_on_bar("Exited")
+
+
+perc_on_bar("Tenure")
+
+
+perc_on_bar("NumOfProducts")
+
+
+perc_on_bar("HasCrCard")
+
+
+perc_on_bar("IsActiveMember")
+
+
+#Bivariate analysis
+plt.figure(figsize=(10, 5))
+sns.heatmap(data.corr(), annot=True, vmin=-1, vmax=1, fmt=".2f", cmap="Spectral")
+plt.show()
+
+
+### Function to plot stacked bar charts for categorical columns
+def stacked_plot(x):
+    sns.set()
+    ## crosstab
+    tab1 = pd.crosstab(x, data["Exited"], margins=True).sort_values(
+        by=0, ascending=False
+    )
+    print(tab1)
+    print("-" * 120)
+    ## visualising the cross tab
+    tab = pd.crosstab(x, data["Exited"], normalize="index").sort_values(
+        by=0, ascending=False
+    )
+    tab.plot(kind="bar", stacked=True, figsize=(17, 7))
+    plt.legend(
+        loc="lower left",
+        frameon=False,
+    )
+    plt.legend(loc="upper left", bbox_to_anchor=(1, 1))
+    plt.show()
+
+
+stacked_plot(data["Tenure"])
+
+
+stacked_plot(data["NumOfProducts"])
+
+
+stacked_plot(data["HasCrCard"])
+
+
+stacked_plot(data["IsActiveMember"])
+
+
+
+### Function to plot distributions and Boxplots of customers
+def plot(x, target="Exited"):
+    fig, axs = plt.subplots(2, 2, figsize=(12, 10))
+    axs[0, 0].set_title(
+        f"Distribution of {x} of people who attrited", fontsize=12, fontweight="bold"
+    )
+    sns.distplot(data[(data[target] == 1)][x], ax=axs[0, 0], color="teal")
+    axs[0, 1].set_title(
+        f"Distribution of {x} of people who did not attrite",
+        fontsize=12,
+        fontweight="bold",
+    )
+    sns.distplot(data[(data[target] == 0)][x], ax=axs[0, 1], color="orange")
+    axs[1, 0].set_title(
+        f"Boxplot of {x} w.r.t Exited", fontsize=12, fontweight="bold"
+    )
+
+    line = plt.Line2D(
+        (0.1, 0.9), (0.5, 0.5), color="grey", linewidth=1.5, linestyle="--"
+    )
+    fig.add_artist(line)
+
+    sns.boxplot(
+        data[target], data[x], ax=axs[1, 0], palette="gist_rainbow", showmeans=True
+    )
+    axs[1, 1].set_title(
+        f"Boxplot of {x} w.r.t Exited - Without outliers",
+        fontsize=12,
+        fontweight="bold",
+    )
+    sns.boxplot(
+        data[target],
+        data[x],
+        ax=axs[1, 1],
+        showfliers=False,
+        palette="gist_rainbow",
+        showmeans=True,
+    )  # turning off outliers from boxplot
+    plt.tight_layout(pad=4)
+    plt.show()
+
+
+
+plot("CreditScore")
+
+
+plot("Age")
+
+
+plot("Balance")
+
+
+plot("EstimatedSalary")
+
+
+dist_cols = [
+    "Age",
+    "Balance",
+]
+
+for col in dist_cols:
+    data[col + "_log"] = np.log(data[col] + 1)
+    sns.distplot(data[col + "_log"])
+    plt.show()
+
+
+# dropping the original columns
+data.drop("Age", axis=1, inplace=True)
+data.drop("Balance_log", axis=1, inplace=True)
+data.head()
+
+
+oneHotCols = ["Geography", "Gender","Tenure","NumOfProducts"]
+
+data = pd.get_dummies(data, columns=oneHotCols, drop_first=True)
+data.head(10)
+
+
+data.info()
+
+
+data1 = data.copy()
+
+# Separating target variable and other variables
+X_data = data1.drop(columns=["CustomerId","Exited", "Surname", "RowNumber"])
+Y_data = data1["Exited"]
+
+X_data.head()
+
+
+from sklearn.preprocessing import StandardScaler
+
+# Normalize in [-1,+1] range
+
+Scale_cols = ["CreditScore","Age_log","Balance","EstimatedSalary"]
+
+for col in Scale_cols:
+    X_data['normalized'+col] = StandardScaler().fit_transform(X_data[col].values.reshape(-1,1))  
+    X_data= X_data.drop(col,axis=1)
+
+
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X_data, Y_data, test_size=0.25, random_state=1, stratify=Y_data
+)
+print(X_train.shape, X_test.shape)
+
+
+X_train.head()
+
+
+#initialize the model
+model = Sequential()
+
+
+
+# This adds the input layer (by specifying input dimension) AND the first hidden layer (units)
+model.add(Dense(units=22, input_dim = 22,activation='relu'))   # input of 22 columns as shown above
+# hidden layer
+model.add(Dense(units=24,activation='relu'))
+#Adding Dropout to prevent overfitting 
+model.add(Dropout(0.5))
+model.add(Dense(20,activation='relu'))
+# model.add(Dense(24,activation='relu'))
+# Adding the output layer
+# we have an output of 1 node, which is the the desired dimensions of our output (fraud or not)
+# We use the sigmoid because we want probability outcomes
+model.add(Dense(1,activation='sigmoid'))                        # binary classification fraudulent or not
+
+
+
+# Create optimizer with default learning rate
+# Compile the model
+model.compile(optimizer='adam',loss='binary_crossentropy',metrics=['accuracy'])
+
+
+
+model.summary()
+
+
+#fitting the model
+history=model.fit(X_train,y_train,batch_size=200,epochs=20,validation_split=0.2)
+
+
+# Capturing learning history per epoch
+hist  = pd.DataFrame(history.history)
+hist['epoch'] = history.epoch
+
+# Plotting accuracy at different epochs
+plt.plot(hist['loss'])
+plt.plot(hist['val_loss'])
+plt.legend(("train" , "valid") , loc =0)
+
+
+score1 = model.evaluate(X_test, y_test)
+
+
+yprednn1=model.predict(X_test)
+yprednn1=yprednn1.round()
+print('Neural Network with relu:\n {}\n'.format(
+    metrics.classification_report(yprednn1, y_test)))
+
+
+#initialize the model
+model_sig = Sequential()
+# This adds the input layer (by specifying input dimension) AND the first hidden layer (units)
+model_sig.add(Dense(units=22, input_dim = 22,activation='sigmoid'))   # input of 22 columns as shown above
+# hidden layer
+model_sig.add(Dense(units=24,activation='sigmoid'))
+#Adding Dropout to prevent overfitting 
+model_sig.add(Dropout(0.5))
+model_sig.add(Dense(20,activation='sigmoid'))
+# model.add(Dense(24,activation='relu'))
+# Adding the output layer
+# we have an output of 1 node, which is the the desired dimensions of our output (fraud or not)
+# We use the sigmoid because we want probability outcomes
+model_sig.add(Dense(1,activation='sigmoid'))                        # binary classification fraudulent or not
+# Create optimizer with default learning rate
+# Compile the model
+model_sig.compile(optimizer='adam',loss='binary_crossentropy',metrics=['accuracy'])
+model_sig.summary()
+
+
+
+#fitting the model
+history_sig=model_sig.fit(X_train,y_train,batch_size=15,epochs=10,validation_split=0.2)
+
+
+# Capturing learning history per epoch
+hist_sig  = pd.DataFrame(history_sig.history)
+hist_sig['epoch'] = history_sig.epoch
+
+# Plotting accuracy at different epochs
+plt.plot(hist_sig['loss'])
+plt.plot(hist_sig['val_loss'])
+plt.legend(("train" , "valid") , loc =0)
+
+
+score2 = model_sig.evaluate(X_test, y_test)
+
+
+yprednn2=model_sig.predict(X_test)
+yprednn2=yprednn2.round()
+print('Neural Network with relu:\n {}\n'.format(
+    metrics.classification_report(yprednn2, y_test)))
+
+
+
+#initialize the model
+model_tanh = Sequential()
+# This adds the input layer (by specifying input dimension) AND the first hidden layer (units)
+model_tanh.add(Dense(units=30, input_dim = 22,activation='tanh'))   # input of 22 columns as shown above
+# hidden layer
+model_tanh.add(Dense(units=30,activation='tanh'))
+#Adding Dropout to prevent overfitting 
+model_tanh.add(Dropout(0.5))
+model_tanh.add(Dense(20,activation='tanh'))
+# model.add(Dense(24,activation='relu'))
+# Adding the output layer
+# we have an output of 1 node, which is the the desired dimensions of our output (fraud or not)
+# We use the sigmoid because we want probability outcomes
+model_tanh.add(Dense(1,activation='sigmoid'))                        # binary classification exited or not
+# Create optimizer with default learning rate
+# Compile the model
+model_tanh.compile(optimizer='adam',loss='binary_crossentropy',metrics=['accuracy'])
+model_tanh.summary()
+
+
+
+
+#fitting the model
+history_tanh=model_tanh.fit(X_train,y_train,batch_size=200,epochs=20,validation_split=0.2)
+
+
+
+# Capturing learning history per epoch
+hist_tanh  = pd.DataFrame(history_tanh.history)
+hist_tanh['epoch'] = history_tanh.epoch
+
+# Plotting accuracy at different epochs
+plt.plot(hist_tanh['loss'])
+plt.plot(hist_tanh['val_loss'])
+plt.legend(("train" , "valid") , loc =0)
+
+
+score3 = model_tanh.evaluate(X_test, y_test)
+
+
+
+yprednn3=model_tanh.predict(X_test)
+yprednn3=yprednn3.round()
+print('Neural Network with tanh:\n {}\n'.format(
+    metrics.classification_report(yprednn3, y_test)))
+
+
+from sklearn.metrics import auc
+from sklearn.metrics import plot_roc_curve
+# calculate the fpr and tpr for all thresholds of the classification
+preds = model.predict(X_test)
+fpr, tpr, threshold = metrics.roc_curve(y_test, preds)
+roc_auc = metrics.auc(fpr, tpr)
+
+
+plt.title('Receiver Operating Characteristic')
+plt.plot(fpr, tpr, 'b', label = 'AUC = %0.2f' % roc_auc)
+plt.legend(loc = 'lower right')
+plt.plot([0, 1], [0, 1],'r--')
+plt.xlim([0, 1])
+plt.ylim([0, 1])
+plt.ylabel('True Positive Rate')
+plt.xlabel('False Positive Rate')
+plt.show()
+
+
+
+def make_confusion_matrix(cf,
+                          group_names=None,
+                          categories='auto',
+                          count=True,
+                          percent=True,
+                          cbar=True,
+                          xyticks=True,
+                          xyplotlabels=True,
+                          sum_stats=True,
+                          figsize=None,
+                          cmap='Blues',
+                          title=None):
+    '''
+    This function will make a pretty plot of an sklearn Confusion Matrix cm using a Seaborn heatmap visualization.
+    Arguments
+    '''
+
+
+    # CODE TO GENERATE TEXT INSIDE EACH SQUARE
+    blanks = ['' for i in range(cf.size)]
+
+    if group_names and len(group_names)==cf.size:
+        group_labels = ["{}\n".format(value) for value in group_names]
+    else:
+        group_labels = blanks
+
+    if count:
+        group_counts = ["{0:0.0f}\n".format(value) for value in cf.flatten()]
+    else:
+        group_counts = blanks
+
+    if percent:
+        group_percentages = ["{0:.2%}".format(value) for value in cf.flatten()/np.sum(cf)]
+    else:
+        group_percentages = blanks
+
+    box_labels = [f"{v1}{v2}{v3}".strip() for v1, v2, v3 in zip(group_labels,group_counts,group_percentages)]
+    box_labels = np.asarray(box_labels).reshape(cf.shape[0],cf.shape[1])
+
+
+    # CODE TO GENERATE SUMMARY STATISTICS & TEXT FOR SUMMARY STATS
+    if sum_stats:
+        #Accuracy is sum of diagonal divided by total observations
+        accuracy  = np.trace(cf) / float(np.sum(cf))
+
+        #if it is a binary confusion matrix, show some more stats
+        if len(cf)==2:
+            #Metrics for Binary Confusion Matrices
+            precision = cf[1,1] / sum(cf[:,1])
+            recall    = cf[1,1] / sum(cf[1,:])
+            f1_score  = 2*precision*recall / (precision + recall)
+            stats_text = "\n\nAccuracy={:0.3f}\nPrecision={:0.3f}\nRecall={:0.3f}\nF1 Score={:0.3f}".format(
+                accuracy,precision,recall,f1_score)
+        else:
+            stats_text = "\n\nAccuracy={:0.3f}".format(accuracy)
+    else:
+        stats_text = ""
+
+
+    # SET FIGURE PARAMETERS ACCORDING TO OTHER ARGUMENTS
+    if figsize==None:
+        #Get default figure size if not set
+        figsize = plt.rcParams.get('figure.figsize')
+
+    if xyticks==False:
+        #Do not show categories if xyticks is False
+        categories=False
+
+
+    # MAKE THE HEATMAP VISUALIZATION
+    plt.figure(figsize=figsize)
+    sns.heatmap(cf,annot=box_labels,fmt="",cmap=cmap,cbar=cbar,xticklabels=categories,yticklabels=categories)
+
+    if xyplotlabels:
+        plt.ylabel('True label')
+        plt.xlabel('Predicted label' + stats_text)
+    else:
+        plt.xlabel(stats_text)
+    
+    if title:
+        plt.title(title)
+## Confusion Matrix on unsee test set
+y_pred1 = model.predict(X_test)
+for i in range(len(y_test)):
+    if y_pred1[i]>0.4:
+        y_pred1[i]=1 
+    else:
+        y_pred1[i]=0
+
+
+
+cm2=confusion_matrix(y_test, y_pred1)
+labels = ['True Negative','False Positive','False Negative','True Positive']
+categories = [ 'Stayed','Exited']
+make_confusion_matrix(cm2, 
+                      group_names=labels,
+                      categories=categories, 
+                      cmap='Blues')
